@@ -27,11 +27,17 @@ type GP
     alpha::Vector{Float64}  # (k + obsNoise)⁻¹y
     mLL::Float64            # Marginal log-likelihood
     dmLL::Vector{Float64}   # Gradient marginal log-likelihood
+    H::Matrix{Float64}      # Matrix to stack mean functions h(x) = (1,x,x²,..)
+    
     function GP(x::Matrix{Float64}, y::Vector{Float64}, m::Mean, k::Kernel, logNoise::Float64=-1e8)
         dim, nobsv = size(x)
         length(y) == nobsv || throw(ArgumentError("Input and output observations must have consistent dimensions."))
         gp = new(x, y, dim, nobsv, logNoise, m, k)
-        update_mll!(gp)
+        if isa(gp.m,MeanPrior)
+            update_mll_prior!(gp)
+        else
+            update_mll!(gp)
+        end            
         return gp
    end
 end
@@ -45,6 +51,17 @@ function update_mll!(gp::GP)
     gp.cK = PDMat(crossKern(gp.x,gp.k) + exp(gp.logNoise)*eye(gp.nobsv))
     gp.alpha = gp.cK \ (gp.y - m)
     gp.mLL = -dot((gp.y-m),gp.alpha)/2.0 - logdet(gp.cK)/2.0 - gp.nobsv*log(2π)/2.0 #Marginal log-likelihood
+end
+
+# Update marginal log-likelihood where we have integrated out the mean function parameters with a non-informative Gaussian prior
+function update_mll_prior!(gp::GP)
+    gp.H = meanf(gp.m,gp.x)
+    gp.cK = PDMat(crossKern(gp.x,gp.k) + exp(gp.logNoise)*eye(gp.nobsv))
+    gp.alpha = gp.cK \gp.y
+    Hck = whiten(gp.cK,gp.H')
+    A = Hck'Hck
+    Ahk = whiten(PDMat(A),gp.H)
+    gp.mLL = -dot(gp.y,gp.alpha)/2.0 +dot(gp.alpha'*Ahk'Ahk,gp.alpha)/2.0 -logdet(gp.cK)/2.0 -logdet(A)/2.0 - (gp.nobsv-rank(gp.H'))*log(2π)/2.0 #Marginal log-likelihood
 end
 
 # Update gradient of marginal log likelihood
@@ -97,17 +114,41 @@ function predict(gp::GP, x::Matrix{Float64}; full_cov::Bool=false)
         ## calculate prediction for each point independently
             mu = Array(Float64, size(x,2))
             Sigma = similar(mu)
-        for k in 1:size(x,2)
-            out = _predict(gp, x[:,k:k])
-            mu[k] = out[1][1]
-            Sigma[k] = out[2][1]
-        end
+        if isa(gp.m,MeanPrior)
+            for k in 1:size(x,2)
+                out = _predictPrior(gp, x[:,k:k])
+                mu[k] = out[1][1]
+                Sigma[k] = out[2][1]
+            end
+        else
+            for k in 1:size(x,2)
+                out = _predict(gp, x[:,k:k])
+                mu[k] = out[1][1]
+                Sigma[k] = out[2][1]
+            end
+        end            
         return mu, Sigma
     end
 end
 
 # 1D Case for prediction
 predict(gp::GP, x::Vector{Float64};full_cov::Bool=false) = predict(gp, x'; full_cov=full_cov)
+
+## compute predictions assuming we integrate out the mean function hyperparameters with a non-informative Gaussian prior
+function _predictPrior(gp::GP, x::Array{Float64})
+    cK   = crossKern(x,gp.x,gp.k)
+    Lck  = whiten(gp.cK, cK')
+    H    = meanf(gp.m,x)
+    Hck = whiten(gp.cK,gp.H')
+    A = Hck'Hck
+    Ahk = whiten(PDMat(A),gp.H)
+    beta = Ahk*gp.alpha
+    R    = H - whiten(gp.cK,gp.H')'Lck
+    mu = cK*gp.alpha + R'*beta                          # Predictive mean
+    Sigma = crossKern(x,gp.k) - Lck'Lck + R'A*R  # Predictive covariance
+    Sigma = max(Sigma,0)
+    return (mu, Sigma)
+end
 
 ## compute predictions
 function _predict(gp::GP, x::Array{Float64})

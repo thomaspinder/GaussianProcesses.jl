@@ -60,20 +60,21 @@ function update_mll_prior!(gp::GP)
     gp.alpha = gp.cK \gp.y
     Hck = whiten(gp.cK,gp.H')
     A = Hck'Hck
-    Ahk = whiten(PDMat(A),gp.H)
-    gp.mLL = -dot(gp.y,gp.alpha)/2.0 +dot(gp.alpha'*Ahk'Ahk,gp.alpha)/2.0 -logdet(gp.cK)/2.0 -logdet(A)/2.0 - (gp.nobsv-rank(gp.H'))*log(2π)/2.0 #Marginal log-likelihood
+    Ah = whiten(PDMat(A),gp.H)
+    gp.mLL = -dot(gp.y,gp.alpha)/2.0 +dot(gp.alpha'*Ah'Ah,gp.alpha)/2.0 -logdet(gp.cK)/2.0 -logdet(A)/2.0 - (gp.nobsv-rank(gp.H'))*log(2π)/2.0 #Marginal log-likelihood
 end
 
 # Update gradient of marginal log likelihood
 function update_mll_and_dmll!(gp::GP; noise::Bool=true, mean::Bool=true, kern::Bool=true)
+    
     update_mll!(gp::GP)
+    
     gp.dmLL = Array(Float64, noise + mean*num_params(gp.m) + kern*num_params(gp.k))
 
     # Calculate Gradient with respect to hyperparameters
 
     #Derivative wrt the observation noise
     if noise
-        #gp.dmLL[1] = exp(2*gp.logNoise)*trace((gp.alpha*gp.alpha' - gp.L'\(gp.L\eye(gp.nobsv))))
         gp.dmLL[1] = exp(2*gp.logNoise)*trace((gp.alpha*gp.alpha' - gp.cK \ eye(gp.nobsv)))
     end
 
@@ -90,6 +91,32 @@ function update_mll_and_dmll!(gp::GP; noise::Bool=true, mean::Bool=true, kern::B
         Kgrads = grad_stack(gp.x, gp.k)   # [dK/dθᵢ]
         for i in 1:num_params(gp.k)
             gp.dmLL[i+mean*num_params(gp.m)+noise] = trace((gp.alpha*gp.alpha' - gp.cK \ eye(gp.nobsv))*Kgrads[:,:,i])/2
+        end
+    end
+end
+
+# Update gradient of the marginal log likelihood for the case where we integrate out the mean function parameters
+function update_mll_and_dmll_prior!(gp::GP; noise::Bool=true, kern::Bool=true)
+    Hck = whiten(gp.cK,gp.H')
+    A = Hck'Hck
+    Ah = whiten(PDMat(A),gp.H)
+    
+    update_mll_prior!(gp::GP)
+    
+    gp.dmLL = Array(Float64, noise + kern*num_params(gp.k))
+
+    # Calculate Gradient with respect to hyperparameters
+
+    #Derivative wrt the observation noise
+    if noise
+        gp.dmLL[1] = exp(2*gp.logNoise)*(trace((gp.alpha*gp.alpha' - gp.cK \ eye(gp.nobsv))) + trace(-2*gp.alpha*gp.alpha'*(gp.cK\Ah'Ah)+gp.alpha*gp.alpha'*(gp.cK\Ah'Ah)'*(gp.cK\Ah'Ah))/2.0 -trace(-A\(gp.cK\gp.H')'*(gp.cK\gp.H'))/2.0)
+    end
+
+    # Derivative of marginal log-likelihood with respect to kernel hyperparameters
+    if kern
+        Kgrads = grad_stack(gp.x, gp.k)   # [dK/dθᵢ]
+        for i in 1:num_params(gp.k)
+            gp.dmLL[i+noise] = trace((gp.alpha*gp.alpha' - gp.cK \ eye(gp.nobsv))*Kgrads[:,:,i])/2 + trace(-2*gp.alpha*gp.alpha'*Kgrads[:,:,i]*(gp.cK\Ah'Ah)+gp.alpha*gp.alpha'*(gp.cK\Ah'Ah)'*Kgrads[:,:,i]*(gp.cK\Ah'Ah))/2.0 -trace(-A\(gp.cK\gp.H')'*Kgrads[:,:,i]*(gp.cK\gp.H'))/2.0
         end
     end
 end
@@ -136,16 +163,16 @@ predict(gp::GP, x::Vector{Float64};full_cov::Bool=false) = predict(gp, x'; full_
 
 ## compute predictions assuming we integrate out the mean function hyperparameters with a non-informative Gaussian prior
 function _predictPrior(gp::GP, x::Array{Float64})
-    cK   = crossKern(x,gp.x,gp.k)
-    Lck  = whiten(gp.cK, cK')
-    H    = meanf(gp.m,x)
+    cK  = crossKern(x,gp.x,gp.k)
+    Lck = whiten(gp.cK, cK')
+    H   = meanf(gp.m,x)
     Hck = whiten(gp.cK,gp.H')
-    A = Hck'Hck
-    Ahk = whiten(PDMat(A),gp.H)
-    beta = Ahk*gp.alpha
+    A   = PDMat(Hck'Hck)
+    beta = A\gp.H*gp.alpha
     R    = H - whiten(gp.cK,gp.H')'Lck
     mu = cK*gp.alpha + R'*beta                          # Predictive mean
-    Sigma = crossKern(x,gp.k) - Lck'Lck + R'A*R  # Predictive covariance
+    LaR = whiten(A, R)
+    Sigma = crossKern(x,gp.k) - Lck'Lck + LaR'LaR  # Predictive covariance
     Sigma = max(Sigma,0)
     return (mu, Sigma)
 end

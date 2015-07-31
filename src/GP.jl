@@ -28,6 +28,8 @@ type GP
     mLL::Float64            # Marginal log-likelihood
     dmLL::Vector{Float64}   # Gradient marginal log-likelihood
     H::Matrix{Float64}      # Matrix to stack mean functions h(x) = (1,x,x²,..)
+    A::Matrix{Float64}      
+    Ah::Matrix{Float64}     
     
     function GP(x::Matrix{Float64}, y::Vector{Float64}, m::Mean, k::Kernel, logNoise::Float64=-1e8)
         dim, nobsv = size(x)
@@ -59,9 +61,9 @@ function update_mll_prior!(gp::GP)
     gp.cK = PDMat(crossKern(gp.x,gp.k) + exp(gp.logNoise)*eye(gp.nobsv))
     gp.alpha = gp.cK \gp.y
     Hck = whiten(gp.cK,gp.H')
-    A = Hck'Hck
-    Ah = whiten(PDMat(A),gp.H)
-    gp.mLL = -dot(gp.y,gp.alpha)/2.0 +dot(gp.alpha'*Ah'Ah,gp.alpha)/2.0 -logdet(gp.cK)/2.0 -logdet(A)/2.0 - (gp.nobsv-rank(gp.H'))*log(2π)/2.0 #Marginal log-likelihood
+    gp.A = Hck'Hck
+    gp.Ah = whiten(PDMat(gp.A),gp.H)
+    gp.mLL = -dot(gp.y,gp.alpha)/2.0 +dot(gp.alpha'*gp.Ah'gp.Ah,gp.alpha)/2.0 -logdet(gp.cK)/2.0 -logdet(gp.A)/2.0 - (gp.nobsv-rank(gp.H'))*log(2π)/2.0 #Marginal log-likelihood
 end
 
 # Update gradient of marginal log likelihood
@@ -97,10 +99,7 @@ end
 
 # Update gradient of the marginal log likelihood for the case where we integrate out the mean function parameters
 function update_mll_and_dmll_prior!(gp::GP; noise::Bool=true, kern::Bool=true)
-    Hck = whiten(gp.cK,gp.H')
-    A = Hck'Hck
-    Ah = whiten(PDMat(A),gp.H)
-    
+    khah = gp.cK\gp.Ah'gp.Ah    
     update_mll_prior!(gp::GP)
     
     gp.dmLL = Array(Float64, noise + kern*num_params(gp.k))
@@ -109,14 +108,14 @@ function update_mll_and_dmll_prior!(gp::GP; noise::Bool=true, kern::Bool=true)
 
     #Derivative wrt the observation noise
     if noise
-        gp.dmLL[1] = exp(2*gp.logNoise)*(trace((gp.alpha*gp.alpha' - gp.cK \ eye(gp.nobsv))) + trace(-2*gp.alpha*gp.alpha'*(gp.cK\Ah'Ah)+gp.alpha*gp.alpha'*(gp.cK\Ah'Ah)'*(gp.cK\Ah'Ah))/2.0 -trace(-A\(gp.cK\gp.H')'*(gp.cK\gp.H'))/2.0)
+        gp.dmLL[1] = exp(2*gp.logNoise)*(trace((gp.alpha*gp.alpha'*(eye(gp.nobsv) -2*khah') - gp.cK \ eye(gp.nobsv) + khah*gp.alpha*gp.alpha'*khah'))/2.0 -trace(-gp.A\(gp.cK\gp.H')'*(gp.cK\gp.H'))/2.0)
     end
 
     # Derivative of marginal log-likelihood with respect to kernel hyperparameters
     if kern
         Kgrads = grad_stack(gp.x, gp.k)   # [dK/dθᵢ]
         for i in 1:num_params(gp.k)
-            gp.dmLL[i+noise] = trace((gp.alpha*gp.alpha' - gp.cK \ eye(gp.nobsv))*Kgrads[:,:,i])/2 + trace(-2*gp.alpha*gp.alpha'*Kgrads[:,:,i]*(gp.cK\Ah'Ah)+gp.alpha*gp.alpha'*(gp.cK\Ah'Ah)'*Kgrads[:,:,i]*(gp.cK\Ah'Ah))/2.0 -trace(-A\(gp.cK\gp.H')'*Kgrads[:,:,i]*(gp.cK\gp.H'))/2.0
+            gp.dmLL[i+noise] = trace((gp.alpha*gp.alpha'*(eye(gp.nobsv) -2*khah') - gp.cK \ eye(gp.nobsv) + khah*gp.alpha*gp.alpha'*khah')*Kgrads[:,:,i])/2.0-trace(-gp.A\(gp.cK\gp.H')'*Kgrads[:,:,i]*(gp.cK\gp.H'))/2.0
         end
     end
 end

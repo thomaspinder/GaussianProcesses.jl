@@ -63,7 +63,7 @@ function update_mll_prior!(gp::GP)
     Hck = whiten(gp.cK,gp.H')
     gp.A = Hck'Hck
     gp.Ah = whiten(PDMat(gp.A),gp.H)
-    gp.mLL = -dot(gp.y,gp.alpha)/2.0 +dot(gp.alpha'*gp.Ah'gp.Ah,gp.alpha)/2.0 -logdet(gp.cK)/2.0 -logdet(gp.A)/2.0 - (gp.nobsv-rank(gp.H'))*log(2π)/2.0 #Marginal log-likelihood
+    gp.mLL = -dot(gp.y,gp.alpha)/2.0 +dot(vec(gp.alpha'*gp.Ah'gp.Ah),gp.alpha)/2.0 -logdet(gp.cK)/2.0 -logdet(gp.A)/2.0 - (gp.nobsv-rank(gp.H'))*log(2π)/2.0 #Marginal log-likelihood
 end
 
 # Update gradient of marginal log likelihood

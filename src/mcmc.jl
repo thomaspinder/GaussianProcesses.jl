@@ -26,3 +26,6 @@ function mcmc(gp::GP, numIter::Int64, burnin::Int64)
         end
         sim
     end
+
+
+

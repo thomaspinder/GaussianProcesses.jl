@@ -99,8 +99,9 @@ end
 
 # Update gradient of the marginal log likelihood for the case where we integrate out the mean function parameters
 function update_mll_and_dmll_prior!(gp::GP; noise::Bool=true, kern::Bool=true)
-    khah = gp.cK\gp.Ah'gp.Ah    
+
     update_mll_prior!(gp::GP)
+    khah = gp.cK\gp.Ah'gp.Ah
     
     gp.dmLL = Array(Float64, noise + kern*num_params(gp.k))
 

@@ -3,6 +3,7 @@ using Optim, PDMats, Distances, ArrayViews, Mamba
 VERSION < v"0.4-" && using Docile
 
 import Base: +, *
+import Mamba: mcmc
 
 # Functions that should be available to package
 # users should be explicitly exported here

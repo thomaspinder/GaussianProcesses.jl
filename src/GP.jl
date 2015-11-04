@@ -50,7 +50,7 @@ GP(x::Vector{Float64}, y::Vector{Float64}, meanf::Mean, kernel::Kernel, logNoise
 # Update auxiliarly data in GP object after changes have been made
 function update_mll!(gp::GP)
     m = meanf(gp.m,gp.x)
-    gp.cK = PDMat(crossKern(gp.x,gp.k) + exp(gp.logNoise)*eye(gp.nobsv))
+    gp.cK = PDMat(crossKern(gp.x,gp.k) + exp(2*gp.logNoise)*eye(gp.nobsv))
     gp.alpha = gp.cK \ (gp.y - m)
     gp.mLL = -dot((gp.y-m),gp.alpha)/2.0 - logdet(gp.cK)/2.0 - gp.nobsv*log(2π)/2.0 #Marginal log-likelihood
 end
@@ -58,7 +58,7 @@ end
 # Update marginal log-likelihood where we have integrated out the mean function parameters with a non-informative Gaussian prior
 function update_mll_prior!(gp::GP)
     gp.H = meanf(gp.m,gp.x)
-    gp.cK = PDMat(crossKern(gp.x,gp.k) + exp(gp.logNoise)*eye(gp.nobsv))
+    gp.cK = PDMat(crossKern(gp.x,gp.k) + exp(2*gp.logNoise)*eye(gp.nobsv) + 1e-8*eye(gp.nobsv))
     gp.alpha = gp.cK \gp.y
     Hck = whiten(gp.cK,gp.H')
     gp.A = Hck'Hck
@@ -215,7 +215,7 @@ function show(io::IO, gp::GP)
     show(io, gp.x)
     print(io,"\n  Output observations = ")
     show(io, gp.y)
-    print(io,"\n  Variance of observation noise = $(exp(gp.logNoise))")
+    print(io,"\n  Variance of observation noise = $(exp(2*gp.logNoise))")
     print(io,"\n  Marginal Log-Likelihood = ")
     show(io, round(gp.mLL,3))
 end

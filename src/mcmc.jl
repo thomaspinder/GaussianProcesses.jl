@@ -11,18 +11,18 @@ function mcmc(gp::GP, numIter::Int64, burnin::Int64)
 
     #Log posterior
     function fx(theta::DenseVector)
-        set_params!(gp, theta)
-        update_mll_and_dmll!(gp)
-        logPost = gp.mLL -sum(0.5*theta.^2)
+        set_params!(gp, theta; mean=false, noise=false)
+        update_mll_prior!(gp)
+        logPost = gp.mLL -sum(0.5*(theta.^2)/10)
         return logPost
     end
 
     sim = Array(Float64,numIter,length(get_params(gp)))
-    theta = AMWGVariate(get_params(gp))  #        theta = NUTSVariate(get_params(gp))
+    theta = AMWGVariate(get_params(gp))   #theta = NUTSVariate(get_params(gp)) 
     #epsilon = nutsepsilon(theta, fx)
     sigma = ones(length(get_params(gp)))
     for i in 1:numIter
-        amwg!(theta, sigma, fx, adapt = (i <= burnin))  #nuts!(theta, epsilon, fx, adapt = (i <= burnin))
+        amwg!(theta, sigma, fx, adapt = (i <= burnin)) #nuts!(theta, epsilon, fx, adapt = (i <= burnin))
         sim[i,:] = collect(theta)
     end
     return sim[(burnin+1):end,:]

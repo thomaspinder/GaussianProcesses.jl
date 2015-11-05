@@ -18,14 +18,16 @@ function mcmc(gp::GP, numIter::Int64, burnin::Int64)
     end
 
     sim = Array(Float64,numIter,length(get_params(gp)))
+    lPost = Array(Float64,numIter)
     theta = AMWGVariate(get_params(gp))   #theta = NUTSVariate(get_params(gp)) 
     #epsilon = nutsepsilon(theta, fx)
     sigma = ones(length(get_params(gp)))
     for i in 1:numIter
         amwg!(theta, sigma, fx, adapt = (i <= burnin)) #nuts!(theta, epsilon, fx, adapt = (i <= burnin))
+        lPost[i] = gp.mLL -sum(0.5*(theta.^2)/10)
         sim[i,:] = collect(theta)
     end
-    return sim[(burnin+1):end,:]
+    return sim[(burnin+1):end,:], lPost[(burnin+1):end]
 end
 
 

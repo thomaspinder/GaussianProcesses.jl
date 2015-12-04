@@ -136,11 +136,15 @@ Calculates the posterior mean and variance of Gaussian Process at specified poin
 function predict(gp::GP, x::Matrix{Float64}; full_cov::Bool=false)
     size(x,1) == gp.dim || throw(ArgumentError("Gaussian Process object and input observations do not have consistent dimensions"))
     if full_cov
-        return _predict(gp, x)
+        if isa(gp.m,MeanPrior)
+            return _predictPrior(gp, x)
+        else
+            return _predict(gp, x)
+        end
     else
         ## calculate prediction for each point independently
-            mu = Array(Float64, size(x,2))
-            Sigma = similar(mu)
+        mu = Array(Float64, size(x,2))
+        Sigma = similar(mu)
         if isa(gp.m,MeanPrior)
             for k in 1:size(x,2)
                 out = _predictPrior(gp, x[:,k:k])

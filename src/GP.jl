@@ -170,6 +170,23 @@ end
 # 1D Case for prediction
 predict(gp::GP, x::Vector{Float64};full_cov::Bool=false) = predict(gp, x'; full_cov=full_cov)
 
+#gradients wrt x
+function predictGrad(gp::GP, x::Matrix{Float64})
+    size(x,1) == gp.dim || throw(ArgumentError("Gaussian Process object and input observations do not have consistent dimensions"))
+    cK  = crossKern(x,gp.x,gp.k)
+    Lck = whiten(gp.cK, cK')
+    H   = meanf(gp.m,x)
+    Hck = whiten(gp.cK,gp.H')
+    A   = PDMat(Hck'Hck)
+    gp.beta = A\gp.H*gp.alpha
+    gradCrossKern = (-0.5*(x.-gp.x)./get_params(gp.k)[1:(end-1)])
+    grad = gradCrossKern.*cK*gp.alpha + ([0.0;1.0;2*x].-Hck'*gradCrossKern')'*gp.beta         
+    return grad
+end
+
+#1D version
+predictGrad(gp::GP, x::Vector{Float64}) = predictGrad(gp, x')
+
 ## compute predictions assuming we integrate out the mean function hyperparameters with a non-informative Gaussian prior
 function _predictPrior(gp::GP, x::Array{Float64})
     cK  = crossKern(x,gp.x,gp.k)

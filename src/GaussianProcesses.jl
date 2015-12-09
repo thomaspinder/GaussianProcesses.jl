@@ -8,7 +8,7 @@ import Mamba: mcmc
 # Functions that should be available to package
 # users should be explicitly exported here
 
-export GP, predict, SumKernel, ProdKernel, Noise, Kernel, SE, SEIso, SEArd, Periodic, Poly, RQ, RQIso, RQArd, Lin, LinIso, LinArd, Mat, Mat12Iso, Mat12Ard, Mat32Iso, Mat32Ard, Mat52Iso, Mat52Ard, MeanZero, MeanConst, MeanLin, MeanPoly, MeanPrior, SumMean, ProdMean, optimize!, mcmc
+export GP, predict, SumKernel, ProdKernel, Noise, Kernel, SE, SEIso, SEArd, Periodic, Poly, RQ, RQIso, RQArd, Lin, LinIso, LinArd, Mat, Mat12Iso, Mat12Ard, Mat32Iso, Mat32Ard, Mat52Iso, Mat52Ard, MeanZero, MeanConst, MeanLin, MeanPoly, MeanPrior, SumMean, ProdMean, optimize!, mcmc, predictGrad
 
 # all package code should be included here
 include("means/meanFunctions.jl")

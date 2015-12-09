@@ -27,6 +27,7 @@ type GP
     # Auxiliary data
     cK::AbstractPDMat       # (k + obsNoise)
     alpha::Vector{Float64}  # (k + obsNoise)⁻¹y
+    beta::Vector{Float64}   # (HK⁻¹Hᵀ)⁻¹HK⁻¹y
     mLL::Float64            # Marginal log-likelihood
     dmLL::Vector{Float64}   # Gradient marginal log-likelihood
     H::Matrix{Float64}      # Matrix to stack mean functions h(x) = (1,x,x²,..)
@@ -176,14 +177,15 @@ function _predictPrior(gp::GP, x::Array{Float64})
     H   = meanf(gp.m,x)
     Hck = whiten(gp.cK,gp.H')
     A   = PDMat(Hck'Hck)
-    beta = A\gp.H*gp.alpha
+    gp.beta = A\gp.H*gp.alpha
     R    = H - whiten(gp.cK,gp.H')'Lck
-    mu = cK*gp.alpha + R'*beta                          # Predictive mean
+    mu = cK*gp.alpha + R'*gp.beta                          # Predictive mean
     LaR = whiten(A, R)
     Sigma = crossKern(x,gp.k) - Lck'Lck + LaR'LaR  # Predictive covariance
     Sigma = max(Sigma,0)
     return (mu, Sigma)
 end
+
 
 ## compute predictions
 function _predict(gp::GP, x::Array{Float64})

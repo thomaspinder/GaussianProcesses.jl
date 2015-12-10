@@ -179,8 +179,8 @@ function predictGrad(gp::GP, x::Matrix{Float64})
     Hck = whiten(gp.cK,gp.H')
     A   = PDMat(Hck'Hck)
     gp.beta = A\gp.H*gp.alpha
-    gradCrossKern = (-0.5*(x.-gp.x)./get_params(gp.k)[1:(end-1)])
-    grad = gradCrossKern.*cK*gp.alpha + ([0.0;1.0;2*x].-Hck'*gradCrossKern')'*gp.beta         
+    gradCrossKern = (-(x.-gp.x)./exp(2*get_params(gp.k)[1:(end-1)])).*cK
+    grad = gradCrossKern*gp.alpha + ([0.0;1.0;2*sum(x)].-Hck'*gradCrossKern')'*gp.beta         
     return grad
 end
 

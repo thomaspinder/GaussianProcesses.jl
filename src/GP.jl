@@ -175,12 +175,17 @@ function predictGrad(gp::GP, x::Matrix{Float64})
     size(x,1) == gp.dim || throw(ArgumentError("Gaussian Process object and input observations do not have consistent dimensions"))
     cK  = crossKern(x,gp.x,gp.k)
     Lck = whiten(gp.cK, cK')
-    H   = meanf(gp.m,x)
-    Hck = whiten(gp.cK,gp.H')
-    A   = PDMat(Hck'Hck)
-    gp.beta = A\gp.H*gp.alpha
     gradCrossKern = (-(x.-gp.x)./exp(2*get_params(gp.k)[1:(end-1)])).*cK
-    grad = gradCrossKern*gp.alpha + ([0.0;1.0;2*sum(x)].-Hck'*gradCrossKern')'*gp.beta         
+    grad = gradCrossKern*gp.alpha 
+    if isa(gp.m,MeanPrior)
+        H   = meanf(gp.m,x)
+        Hck = whiten(gp.cK,gp.H')
+        A   = PDMat(Hck'Hck)
+        gp.beta = A\gp.H*gp.alpha
+        grad = grad + ([0.0;1.0;2*sum(x)].-Hck'*gradCrossKern')'*gp.beta
+    else
+        grad = grad + get_params(gp.m)[1]+2*sum(x)*get_params(gp.m)[2]
+    end
     return grad
 end
 

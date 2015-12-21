@@ -192,6 +192,25 @@ end
 #1D version
 predictGrad(gp::GP, x::Vector{Float64}) = predictGrad(gp, x')
 
+#gradients wrt x, where μ + 0.5*σ²
+function predictGrad2(gp::GP, x::Matrix{Float64})
+    size(x,1) == gp.dim || throw(ArgumentError("Gaussian Process object and input observations do not have consistent dimensions"))
+    cK  = crossKern(x,gp.x,gp.k)
+    Lck = whiten(gp.cK, cK')
+    H   = meanf(gp.m,x)
+    Hck = whiten(gp.cK,gp.H')
+    A   = PDMat(Hck'Hck)
+    R    = H - whiten(gp.cK,gp.H')'Lck
+    LaR = whiten(A, R)
+    gp.beta = A\gp.H*gp.alpha
+    gradCrossKern = (-(x.-gp.x)./exp(2*get_params(gp.k)[1:(end-1)]))
+    grad = gradCrossKern*(cK'.*gp.alpha) + ([0.0;1.0;2*sum(x)].-Hck'*(gradCrossKern.*cK)')'*gp.beta +0.5*(-(gradCrossKern.*Lck')*(Lck.*gradCrossKern') + (([0.0;1.0;2*sum(x)].-Hck'*(gradCrossKern.*cK)')'.*LaR')*(LaR.*([0.0;1.0;2*sum(x)].-Hck'*(gradCrossKern.*cK)')))  
+    return grad
+end
+
+#1D version
+predictGrad2(gp::GP, x::Vector{Float64}) = predictGrad2(gp, x')
+
 ## compute predictions assuming we integrate out the mean function hyperparameters with a non-informative Gaussian prior
 function _predictPrior(gp::GP, x::Array{Float64})
     cK  = crossKern(x,gp.x,gp.k)

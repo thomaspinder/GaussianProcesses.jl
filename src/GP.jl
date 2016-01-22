@@ -154,13 +154,13 @@ function predict(gp::GP, x::Matrix{Float64}; full_cov::Bool=false)
             for k in 1:size(x,2)
                 out = _predictPrior(gp, x[:,k:k])
                 mu[k] = out[1][1]
-                Sigma[k] = out[2][1]
+                Sigma[k] = max(out[2][1],0)
             end
         else
             for k in 1:size(x,2)
                 out = _predict(gp, x[:,k:k])
                 mu[k] = out[1][1]
-                Sigma[k] = out[2][1]
+                Sigma[k] = max(out[2][1],0)
             end
         end            
         return mu, Sigma
@@ -223,7 +223,6 @@ function _predictPrior(gp::GP, x::Array{Float64})
     mu = cK*gp.alpha + R'*gp.beta                          # Predictive mean
     LaR = whiten(A, R)
     Sigma = crossKern(x,gp.k) - Lck'Lck + LaR'LaR  # Predictive covariance
-    Sigma = max(Sigma,0)
     return (mu, Sigma)
 end
 
@@ -234,7 +233,6 @@ function _predict(gp::GP, x::Array{Float64})
     Lck = whiten(gp.cK, cK')
     mu = meanf(gp.m,x) + cK*gp.alpha    # Predictive mean
     Sigma = crossKern(x,gp.k) - Lck'Lck # Predictive covariance
-    Sigma = max(Sigma,0)
     return (mu, Sigma)
 end
 

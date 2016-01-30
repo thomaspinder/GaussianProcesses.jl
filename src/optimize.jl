@@ -11,12 +11,12 @@ A function for optimising the GP hyperparameters based on type II maximum likeli
 """ 
 
 function optimize!(gp::GP; noise::Bool=true, mean::Bool=true, kern::Bool=true, method=:cg, kwargs...)
-    if isa(gp.m,MeanPrior)
+    if isa(gp.m,MeanQuad)
         mean=false
     end        
     function mll(hyp::Vector{Float64})
         set_params!(gp, hyp; noise=noise, mean=mean, kern=kern)
-        if isa(gp.m,MeanPrior)
+        if isa(gp.m,MeanQuad)
             update_mll_prior!(gp)          
         else
             update_mll!(gp)          
@@ -25,7 +25,7 @@ function optimize!(gp::GP; noise::Bool=true, mean::Bool=true, kern::Bool=true, m
     end
     function dmll!(hyp::Vector{Float64}, grad::Vector{Float64})
         set_params!(gp, hyp; noise=noise, mean=mean, kern=kern)
-        if isa(gp.m,MeanPrior)
+        if isa(gp.m,MeanQuad)
             update_mll_and_dmll_prior!(gp; noise=noise, kern=kern)
         else
             update_mll_and_dmll!(gp; noise=noise, mean=mean, kern=kern)
@@ -34,7 +34,7 @@ function optimize!(gp::GP; noise::Bool=true, mean::Bool=true, kern::Bool=true, m
     end
     function mll_and_dmll!(hyp::Vector{Float64}, grad::Vector{Float64})
         set_params!(gp, hyp; noise=noise, mean=mean, kern=kern)
-        if isa(gp.m,MeanPrior)
+        if isa(gp.m,MeanQuad)
             update_mll_and_dmll_prior!(gp; noise=noise, kern=kern)
         else
             update_mll_and_dmll!(gp; noise=noise, mean=mean, kern=kern)

@@ -15,6 +15,7 @@ include("mConst.jl")         # Constant mean function, which also contains the z
 include("mLin.jl")           # Linear mean function
 include("mPoly.jl")          # Polynomial mean function
 include("mPrior.jl")          # Prior mean function
+include("mQuad.jl")          # Quadratic prior mean function
 include("sum_mean.jl")       # Sum mean functions
 include("prod_mean.jl")      # Product of mean functions
 

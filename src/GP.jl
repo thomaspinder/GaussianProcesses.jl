@@ -38,7 +38,7 @@ type GP
         dim, nobsv = size(x)
         length(y) == nobsv || throw(ArgumentError("Input and output observations must have consistent dimensions."))
         gp = new(x, y, dim, nobsv, logNoise, m, k)
-        if isa(gp.m,MeanPrior)
+        if isa(gp.m,MeanQuad)
             update_mll_prior!(gp)
         else
             update_mll!(gp)
@@ -141,7 +141,7 @@ Calculates the posterior mean and variance of Gaussian Process at specified poin
 function predict(gp::GP, x::Matrix{Float64}; full_cov::Bool=false)
     size(x,1) == gp.dim || throw(ArgumentError("Gaussian Process object and input observations do not have consistent dimensions"))
     if full_cov
-        if isa(gp.m,MeanPrior)
+        if isa(gp.m,MeanQuad)
             return _predictPrior(gp, x)
         else
             return _predict(gp, x)
@@ -150,7 +150,7 @@ function predict(gp::GP, x::Matrix{Float64}; full_cov::Bool=false)
         ## calculate prediction for each point independently
         mu = Array(Float64, size(x,2))
         Sigma = similar(mu)
-        if isa(gp.m,MeanPrior)
+        if isa(gp.m,MeanQuad)
             for k in 1:size(x,2)
                 out = _predictPrior(gp, x[:,k:k])
                 mu[k] = out[1][1]
@@ -177,7 +177,7 @@ function predictGrad(gp::GP, x::Matrix{Float64})
     Lck = whiten(gp.cK, cK')
     gradCrossKern = (-(x.-gp.x)./exp(2*get_params(gp.k)[1:(end-1)])).*cK
     grad = gradCrossKern*gp.alpha 
-    if isa(gp.m,MeanPrior)
+    if isa(gp.m,MeanQuad)
         H   = meanf(gp.m,x)
         Hck = whiten(gp.cK,gp.H')
         A   = PDMat(Hck'Hck)

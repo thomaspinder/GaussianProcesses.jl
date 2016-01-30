@@ -15,7 +15,7 @@ Fits a Gaussian process to a set of training points. The Gaussian process is def
 
 # Returns:
 * `gp::GP`            : A Gaussian process fitted to the training data
-""" ->
+""" 
 type GP
     x::Matrix{Float64}      # Input observations  - each column is an observation
     y::Vector{Float64}      # Output observations
@@ -137,7 +137,7 @@ Calculates the posterior mean and variance of Gaussian Process at specified poin
 # Returns:
 * `(mu, Sigma)::(Vector{Float64}, Vector{Float64})`: respectively the posterior mean  and variances of the posterior
                                                     process at the specified points
-""" ->
+""" 
 function predict(gp::GP, x::Matrix{Float64}; full_cov::Bool=false)
     size(x,1) == gp.dim || throw(ArgumentError("Gaussian Process object and input observations do not have consistent dimensions"))
     if full_cov

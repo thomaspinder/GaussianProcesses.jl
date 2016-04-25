@@ -1,5 +1,4 @@
-module GaussianProcesses
-using Optim, PDMats, Distances, ArrayViews, Mamba
+using Optim, PDMats, Distances, ArrayViews, Lora
 VERSION < v"0.4-" && using Docile
 
 import Base: +, *
@@ -8,7 +7,7 @@ import Mamba: mcmc
 # Functions that should be available to package
 # users should be explicitly exported here
 
-export GP, predict, SumKernel, ProdKernel, Noise, Kernel, SE, SEIso, SEArd, Periodic, Poly, RQ, RQIso, RQArd, Lin, LinIso, LinArd, Mat, Mat12Iso, Mat12Ard, Mat32Iso, Mat32Ard, Mat52Iso, Mat52Ard, MeanZero, MeanConst, MeanLin, MeanPoly, MeanPrior, MeanQuad, SumMean, ProdMean, optimize!, mcmc, predictGrad, predictGrad2
+export GP, predict, SumKernel, ProdKernel, Noise, Kernel, SE, SEIso, SEArd, Periodic, Poly, RQ, RQIso, RQArd, Lin, LinIso, LinArd, Mat, Mat12Iso, Mat12Ard, Mat32Iso, Mat32Ard, Mat52Iso, Mat52Ard, MeanZero, MeanConst, MeanLin, MeanPoly, SumMean, ProdMean, optimize!, mcmc
 
 # all package code should be included here
 include("means/meanFunctions.jl")

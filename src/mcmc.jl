@@ -1,34 +1,33 @@
 @doc """
 # Description
-A function to sample from the posterior distribution of the GP hyperparameters. This function uses the NUTS sampler (code taken from Mamba package) which is an automatically tuned HMC sampler and as such utilizes the gradients of the log-posterior.
+A function for running a variety of MCMC algorithms for estimating the GP hyperparameters. This function uses the MCMC algorithms provided by the Lore packages and the user is referred to this package for further details.
 
-    # Arguments:
-    * `gp::GP`: Predefined Gaussian process type
-        * `numIter::Int64`: Number of MCMC iterations
-        * `burnin::Int64`: Number of initial MCMC iterations that are treated as burnin
-        """ ->
-function mcmc(gp::GP, numIter::Int64, burnin::Int64)
+# Arguments:
+* `gp::GP`: Predefined Gaussian process type
+""" ->
 
-    #Log posterior
-    function fx(theta::DenseVector)
-        set_params!(gp, theta; mean=false, noise=false)
-        update_mll_prior!(gp)
-        logPost = gp.mLL -sum(0.5*(theta.^2)/10)
-        return logPost
+function mcmc(gp::GP,start::Vector{Float64},sampler::Lora.MCSampler,mcrange::Lora.BasicMCRange; noise::Bool=true, mean::Bool=true, kern::Bool=true)
+    
+    function mll(hyp::Vector{Float64})  #log-target
+        set_params!(gp, hyp; noise=noise, mean=mean, kern=kern)
+        update_mll!(gp)
+        return gp.mLL
     end
-
-    sim = Array(Float64,numIter,length(get_params(gp)))
-    lPost = Array(Float64,numIter)
-    theta = AMWGVariate(get_params(gp))   #theta = NUTSVariate(get_params(gp)) 
-    #epsilon = nutsepsilon(theta, fx)
-    sigma = ones(length(get_params(gp)))
-    for i in 1:numIter
-        amwg!(theta, sigma, fx, adapt = (i <= burnin)) #nuts!(theta, epsilon, fx, adapt = (i <= burnin))
-        lPost[i] = gp.mLL -sum(0.5*(theta.^2)/10)
-        sim[i,:] = collect(theta)
+    
+    function dmll(hyp::Vector{Float64}) #gradient of the log-target
+        set_params!(gp, hyp; noise=noise, mean=mean, kern=kern)
+        update_mll_and_dmll!(gp; noise=noise, mean=mean, kern=kern)
+        return gp.dmLL
     end
-    return sim[(burnin+1):end,:], lPost[(burnin+1):end]
-end
-
-
+        starting = Dict(:p=>start)
+    q = BasicContMuvParameter(:p, logtarget=mll,gradlogtarget=dmll) 
+    model = likelihood_model(q, false)                               #set-up the model
+    tune = VanillaMCTuner(period=mcrange.burnin)                     #set length of tuning (default to burnin length)
+    job = BasicMCJob(model, sampler, mcrange, starting,tuner=tune)   #set-up MCMC job
+    print(job)                                                       
+    run(job)
+    chain = Lora.output(job)
+    return chain.value
+end    
+    
 

@@ -156,12 +156,20 @@ function predict(gp::GP, x::Matrix{Float64}; full_cov::Bool=false)
         end
     else
         ## Calculate prediction for each point independently
-            μ = Array(Float64, size(x,2))
-            σ2 = similar(μ)
-        for k in 1:size(x,2)
-            m, sig = _predict(gp, x[:,k:k])
-            μ[k] = m[1]
-            σ2[k] = max(full(sig)[1,1], 0.0)
+        μ = Array(Float64, size(x,2))
+        σ2 = similar(μ)
+        if isa(gp.m,MeanQuad)
+            for k in 1:size(x,2)
+                m, sig = _predictPrior(gp, x[:,k:k])
+                μ[k] = m[1]
+                σ2[k] = max(full(sig)[1,1], 0.0)
+            end
+        else
+            for k in 1:size(x,2)
+                m, sig = _predict(gp, x[:,k:k])
+                μ[k] = m[1]
+                σ2[k] = max(full(sig)[1,1], 0.0)
+            end
         end
         return μ, σ2
     end
@@ -213,6 +221,7 @@ predictGrad2(gp::GP, x::Vector{Float64}) = predictGrad2(gp, x')
 
 ## compute predictions assuming we integrate out the mean function hyperparameters with a non-informative Gaussian prior
 function _predictPrior(gp::GP, x::Array{Float64})
+    n = size(x, 2)
     cK  = crossKern(x,gp.x,gp.k)
     Lck = whiten(gp.cK, cK')
     H   = meanf(gp.m,x)
@@ -222,7 +231,8 @@ function _predictPrior(gp::GP, x::Array{Float64})
     R    = H - whiten(gp.cK,gp.H')'Lck
     mu = cK*gp.alpha + R'*gp.beta                          # Predictive mean
     LaR = whiten(A, R)
-    Sigma = crossKern(x,gp.k) - Lck'Lck + LaR'LaR  # Predictive covariance
+    Sigma_raw = crossKern(x,gp.k) - Lck'Lck + LaR'LaR  # Predictive covariance
+    Sigma = try PDMat(Sigma_raw) catch; PDMat(Sigma_raw+1e-8*sum(diag(Sigma_raw))/n*eye(n)) end
     return (mu, Sigma)
 end
 

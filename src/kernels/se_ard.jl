@@ -22,6 +22,7 @@ function set_params!(se::SEArd, hyp::Vector{Float64})
 end
 
 get_params(se::SEArd) = [log(se.ℓ2)/2.0; log(se.σ2)/2.0]
+get_param_names(k::SEArd) = [get_param_names(k.ℓ2, :ll); :lσ]
 num_params(se::SEArd) = se.dim
 
 metric(se::SEArd) = WeightedSqEuclidean(1.0./(se.ℓ2))
@@ -37,3 +38,18 @@ function grad_kern(se::SEArd, x::Vector{Float64}, y::Vector{Float64})
     
     return [g1; g2]
 end
+
+
+function grad_stack!(stack::AbstractArray, X::Matrix{Float64}, se::SEArd)
+    d = size(X,1)
+    stack[:,:,d+1] = crossKern(X, se)
+    ck = view(stack, :, :, d+1)
+    for i in 1:d
+        dim_dist = view(stack, :, :, i)
+        pairwise!(dim_dist, WeightedSqEuclidean([1.0/se.ℓ2[i]]), view(X, i, :))
+        map!(*, dim_dist, dim_dist, ck)
+    end
+    stack[:,:, d+1] = 2.0 * ck
+    return stack
+end
+

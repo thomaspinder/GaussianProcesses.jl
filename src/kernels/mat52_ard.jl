@@ -23,6 +23,7 @@ function set_params!(mat::Mat52Ard, hyp::Vector{Float64})
 end
 
 get_params(mat::Mat52Ard) = [log(mat.ℓ); log(mat.σ2)/2.0]
+get_param_names(mat::Mat52Ard) = [get_param_names(mat.ℓ, :ll); :lσ]
 num_params(mat::Mat52Ard) = mat.dim
 
 metric(mat::Mat52Ard) = WeightedEuclidean(1.0./(mat.ℓ))
@@ -32,7 +33,7 @@ kern(mat::Mat52Ard, r::Float64) = mat.σ2*(1+sqrt(5)*r+5/3*r^2)*exp(-sqrt(5)*r)
 function grad_kern(mat::Mat52Ard, x::Vector{Float64}, y::Vector{Float64})
     r = distance(mat,x,y)
     exp_r = exp(-sqrt(5)*r)
-    wdiff = (x-y)./mat.ℓ
+    wdiff = abs(x-y)./mat.ℓ
     
     g1 = mat.σ2.*((5*wdiff.^2).*(1+sqrt(5).*wdiff)/3).*exp_r #dK_d(log ℓ)
     g2 = 2.0*mat.σ2*(1+sqrt(5)*r+5/3*r^2)*exp_r              #dK_d(log σ)

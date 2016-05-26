@@ -3,7 +3,7 @@ using Optim, PDMats, Distances, ArrayViews, Lora
 VERSION < v"0.4-" && using Docile
 
 import Base: +, *
-import Mamba: mcmc
+import Base: rand, rand!
 
 # Functions that should be available to package
 # users should be explicitly exported here
@@ -30,5 +30,8 @@ end
 
 @glue Gadfly
 @glue Winston
+# This does not require @glue because it uses the interface defined in
+# ScikitLearnBase, which is a skeleton package.
+include("glue/ScikitLearn.jl")
 
 end # module

@@ -10,7 +10,7 @@ k(x,x') = σ²(1+(x-x')ᵀ(x-x')/2αℓ²)^{-α}
 * `lσ::Float64`: Log of the signal standard deviation σ
 * `lα::Float64`: Log of shape parameter α
 """ ->
-type RQIso <: Stationary
+type RQIso <: Isotropic
     ℓ2::Float64      # Length scale 
     σ2::Float64      # Signal std
     α::Float64       # shape parameter
@@ -27,33 +27,21 @@ get_param_names(rq::RQIso) = [:ll, :lσ, :lα]
 num_params(rq::RQIso) = 3
 
 metric(rq::RQIso) = SqEuclidean()
-kern(rq::RQIso, r::Float64) = rq.σ2*(1.0+r/(2.0*rq.α*rq.ℓ2)).^(-rq.α)
+cov(rq::RQIso, r::Float64) = rq.σ2*(1.0+r/(2.0*rq.α*rq.ℓ2))^(-rq.α)
 
-
-function grad_kern(rq::RQIso, x::Vector{Float64}, y::Vector{Float64})
-    r = distance(rq, x, y)
-    
-    g1 = rq.σ2*(r/rq.ℓ2)*(1.0+r/(2*rq.α*rq.ℓ2))^(-rq.α-1.0)       # dK_d(log ℓ)
-    g2 = 2.0*rq.σ2*(1+r/(2*rq.α*rq.ℓ2))^(-rq.α)                   # dK_d(log σ)
-    part = (1.0+r/(2*rq.α*rq.ℓ2))
-    g3 = rq.σ2*part^(-rq.α)*(r/(2*rq.ℓ2*part)-rq.α*log(part))*rq.α  # dK_d(log α)
-    return [g1,g2,g3]
+@inline dk_dll(rq::RQIso, r::Float64) = rq.σ2*(r/rq.ℓ2)*(1.0+r/(2.0*rq.α*rq.ℓ2))^(-rq.α-1.0) # dK_d(log ℓ)dK_dℓ
+@inline function dk_dlα(rq::RQIso, r::Float64)
+    part = (1.0+r/(2.0*rq.α*rq.ℓ2))
+    return rq.σ2*part^(-rq.α)*((r)/(2.0*rq.ℓ2*part)-rq.α*log(part))  # dK_d(log α)
 end
-
-
-function grad_stack!(stack::AbstractArray, X::Matrix{Float64}, rq::RQIso)
-    nobsv = size(X,2)
-    R = distance(rq, X)
-    
-    for i in 1:nobsv, j in 1:i
-        # Check these derivatives!
-        @inbounds stack[i,j,1] = rq.σ2*((R[i,j])/rq.ℓ2)*(1.0+(R[i,j])/(2*rq.α*rq.ℓ2))^(-rq.α-1.0)  # dK_d(log ℓ)dK_dℓ
-        @inbounds stack[j,i,1] = stack[i,j,1]
-        @inbounds stack[i,j,2] = 2.0*rq.σ2*(1+(R[i,j])/(2*rq.α*rq.ℓ2))^(-rq.α) # dK_d(log σ)
-        @inbounds stack[j,i,2] = stack[i,j,2]
-        part = (1.0+R[i,j]/(2*rq.α*rq.ℓ2))
-        @inbounds stack[i,j,3] = rq.σ2*part^(-rq.α)*((R[i,j])/(2*rq.ℓ2*part)-rq.α*log(part))*rq.α  # dK_d(log α)
-        @inbounds stack[j,i,3] = stack[i,j,3]        
+@inline function dk_dθp(rq::RQIso, r::Float64, p::Int)
+    if p==1
+        return dk_dll(rq, r)
+    elseif p==2
+        return dk_dlσ(rq, r)
+    elseif p==3
+        return dk_dlα(rq, r)
+    else
+        return NaN
     end
-    return stack
 end

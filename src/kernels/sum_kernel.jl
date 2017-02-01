@@ -10,6 +10,25 @@ type SumKernel <: Kernel
     end
 end
 
+type SumData <: KernelData
+    datadict::Dict{Symbol, KernelData}
+    keys::Vector{Symbol}
+end
+
+function KernelData{M<:MatF64}(sumkern::SumKernel, X::M)
+    datadict = Dict{Symbol, KernelData}()
+    datakeys = Symbol[]
+    for k in sumkern.kerns
+        data_type = kernel_data_key(k, X)
+        if !haskey(datadict, data_type)
+            datadict[data_type] = KernelData(k, X)
+        end
+        push!(datakeys, data_type)
+    end
+    SumData(datadict, datakeys)
+end
+kernel_data_key{M<:MatF64}(sumkern::SumKernel, X::M) = :SumData
+
 function show(io::IO, sumkern::SumKernel, depth::Int = 0)
     pad = repeat(" ", 2 * depth)
     println(io, "$(pad)Type: $(typeof(sumkern))")
@@ -18,41 +37,28 @@ function show(io::IO, sumkern::SumKernel, depth::Int = 0)
     end
 end
 
-function kern(sumkern::SumKernel, x::Vector{Float64}, y::Vector{Float64})
+function cov{V1<:VecF64,V2<:VecF64}(sumkern::SumKernel, x::V1, y::V2)
     s = 0.0
     for k in sumkern.kerns
-        s += kern(k, x, y)
+        s += cov(k, x, y)
     end
     return s
 end
 
-# This slows down crossKern...
-
-## function crossKern(X::Matrix{Float64}, sumkern::SumKernel)
-##     d, nobsv = size(X)
-##     s = zeros(nobsv, nobsv)
-##     for k in sumkern.kerns
-##         BLAS.axpy!(nobsv*nobsv, 1.0, crossKern(X,k), 1, s, 1)
-##         #s += crossKern(X, k)
-##     end
-##     return s
-## end
-
-## function add_matrices!(X::AbstractMatrix, Y::AbstractMatrix)
-##     m,n = size(X)
-##     for i in 1:m, j in 1:n
-##         X[i,j] += Y[i,j]
-##     end
-## end
-
-function crossKern(X::Matrix{Float64}, sumkern::SumKernel)
-    d, nobsv = size(X)
-    s = zeros(nobsv, nobsv)
-    for k in sumkern.kerns
-        #add_matrices!(s, crossKern(X,k))
-        s[:,:] = s + crossKern(X,k)
+function addcov!{M<:MatF64}(s::MatF64, sumkern::SumKernel, X::M, data::SumData)
+    for (ikern,kern) in enumerate(sumkern.kerns)
+        addcov!(s, kern, X, data.datadict[data.keys[ikern]])
     end
     return s
+end
+function cov!{M<:MatF64}(s::MatF64, sumkern::SumKernel, X::M, data::SumData)
+    s[:,:] = 0.0
+    addcov!(s, sumkern, X, data)
+end
+function cov{M<:MatF64}(sumkern::SumKernel, X::M, data::SumData)
+    d, nobsv = size(X)
+    s = zeros(nobsv, nobsv)
+    cov!(s, sumkern, X, data)
 end
     
 function get_params(sumkern::SumKernel)
@@ -80,10 +86,10 @@ function set_params!(sumkern::SumKernel, hyp::Vector{Float64})
         np = num_params(k)
         set_params!(k, hyp[i:(i+np-1)])
         i += np
-   p end
+    end
 end
 
-function grad_kern(sumkern::SumKernel, x::Vector{Float64}, y::Vector{Float64})
+function grad_kern{V1<:VecF64,V2<:VecF64}(sumkern::SumKernel, x::V1, y::V2)
      dk = Array(Float64, 0)
       for k in sumkern.kerns
         append!(dk,grad_kern(k, x, y))
@@ -91,23 +97,45 @@ function grad_kern(sumkern::SumKernel, x::Vector{Float64}, y::Vector{Float64})
     dk
 end
 
-function grad_stack!(stack::AbstractArray, X::Matrix{Float64}, sumkern::SumKernel)
-    s = 1
-    for kern in sumkern.kerns
-        np = num_params(kern)
-        grad_stack!(view(stack,:, :, s:(s+np-1)), X, kern)
+@inline function dKij_dθp{M<:MatF64}(sumkern::SumKernel, X::M, i::Int, j::Int, p::Int, dim::Int)
+    s=0
+    for k in sumkern.kerns
+        np = num_params(k)
+        if p<=np+s
+            return dKij_dθp(k, X, i,j,p-s,dim)
+        end
         s += np
     end
-    return stack
+end
+@inline function dKij_dθp{M<:MatF64}(sumkern::SumKernel, X::M, data::SumData, i::Int, j::Int, p::Int, dim::Int)
+    s=0
+    for (ikern,kern) in enumerate(sumkern.kerns)
+        np = num_params(kern)
+        if p<=np+s
+            return dKij_dθp(kern, X, data.datadict[data.keys[ikern]],i,j,p-s,dim)
+        end
+        s += np
+    end
+end
+function grad_slice!{M<:MatF64}(dK::MatF64, sumkern::SumKernel, X::M, data::SumData, p::Int)
+    s=0
+    for (ikern,kern) in enumerate(sumkern.kerns)
+        np = num_params(kern)
+        if p<=np+s
+            return grad_slice!(dK, kern, X, data.datadict[data.keys[ikern]],p-s)
+        end
+        s += np
+    end
+    return dK
 end
         
 # Addition operators
 function +(k1::SumKernel, k2::Kernel)
-    kerns = [k1.kerns, k2]
+    kerns = [k1.kerns; k2]
     SumKernel(kerns...)
 end
 function +(k1::SumKernel, k2::SumKernel)
-    kerns = [k1.kerns, k2.kerns]
+    kerns = [k1.kerns; k2.kerns]
     SumKernel(kerns...)
 end
 +(k1::Kernel, k2::Kernel) = SumKernel(k1,k2)

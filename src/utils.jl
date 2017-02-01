@@ -1,51 +1,101 @@
 @doc """
 # Description
- Creates a kernel matrix from vector inputs according to a function d, where D[i,j] = d(x1[i], x2[j]) or D[i,j] = d(x1[i], x1[j]). For example, where d is function of distance between x1 and x2.
+ Populates D matrix applying a function to each pair of columns of input matrices.
+     
 # Arguments:
-* `x1::Matrix{Float64}`  : Input matrix
-* `x2::Matrix{Float64}`  : Input matrix (optional)
-* `d::Function`          : Testing function. In this case a function of distance between x1 and x2
-# Returns:
-* `D::Matrix{Float64}`: A positive definite matrix given as output from d(x1,x2)
+* `D::Matrix{Float64}`  : Output matrix
+* `X::Matrix{Float64}`  : Input matrix
+* `Y::Matrix{Float64}`  : Input matrix (optional)
+* `f::Function`          : Testing function. In this case a function of distance between X and Y
+    
+# Return:
+* `D::Matrix{Float64}`: Matrix D such that `D[i,j] = f(X[:,i], Y[:,j])`
 """ ->
-function crossKern(x1::Matrix{Float64}, x2::Matrix{Float64}, d::Function)
-    dim, nobs1 = size(x1)
-    nobs2 = size(x2,2)
-    dim == size(x2,1) || throw(ArgumentError("Input observation matrices must have consistent dimensions"))
-    D= Array(Float64, nobs1, nobs2)
+function map_column_pairs!{M1<:MatF64,M2<:MatF64,M3<:MatF64}(D::M1, f::Function, X::M2, Y::M3)
+    dim, nobs1 = size(X)
+    nobs2 = size(Y,2)
+    dim == size(Y,1) || throw(ArgumentError("Input observation matrices must have consistent dimensions"))
+    size(D,1) == nobs1 || throw(ArgumentError(@sprintf("D has %d rows, while X has %d columns (should be same)", 
+                                                       size(D,1), nobs1)))
+    size(D,2) == nobs2 || throw(ArgumentError(@sprintf("D has %d columns, while Y has %d columns (should be same)", 
+                                                       size(D,2), nobs2)))
     for i in 1:nobs1, j in 1:nobs2
-        @inbounds D[i,j] = d(x1[:,i], x2[:,j])
+        @inbounds D[i,j] = f(X[:,i], Y[:,j])
     end
-    return max(D,0)
+    return D
 end
 
-# Returns matrix D where D[i,j] = kernel(x1[i], x1[j])
-#
+@doc """
+# Description
+ Creates a matrix by applying a function to each pair of columns of input matrices.
+     
 # Arguments:
-#  x matrix of observations (each column is an observation)
-#  d is a function between two vectors
-function crossKern(x::Matrix{Float64}, d::Function)
-    dim, nobsv = size(x)
-    D = Array(Float64, nobsv, nobsv)
+* `X::Matrix{Float64}`  : Input matrix
+* `Y::Matrix{Float64}`  : Input matrix (optional)
+* `f::Function`          : Testing function. In this case a function of distance between X and Y
+    
+# Return:
+* `D::Matrix{Float64}`: Symmetric matrix D such that `D[i,j] = f(X[:,i], Y[:,j])`
+""" ->
+function map_column_pairs{M1<:MatF64,M2<:MatF64}(f::Function, X::M1, Y::M2)
+    nobs1 = size(X,2)
+    nobs2 = size(Y,2)
+    D= Array(Float64, nobs1, nobs2)
+    map_column_pairs!(D, f, X, Y)
+    return D
+end
+
+@doc """
+# Description
+Populates D matrix by applying a function to each pair of columns of an input matrix.
+
+# Arguments
+* `D::AbstractMatrix{Float64}`  : Output matrix
+* `X::Matrix{Float64}`: matrix of observations (each column is an observation)
+* `d::Function`: function specifying covariance between two points
+
+# Return:
+* `D::Matrix{Float64}`: Symmetric matrix D such that `D[i,j] = d(X[:,i], X[:,j])`
+
+""" ->
+function map_column_pairs!{M1<:MatF64,M2<:MatF64}(D::M1, f::Function, X::M2)
+    dim, nobsv = size(X)
+    size(D,1) == nobsv || throw(ArgumentError(@sprintf("D has %d rows, while X has %d columns (should be same)", 
+                                                       size(D,1), nobsv)))
+    size(D,2) == nobsv || throw(ArgumentError(@sprintf("D has %d columns, while X has %d columns (should be same)", 
+                                                       size(D,2), nobsv)))
     for i in 1:nobsv
         for j in 1:i
-            @inbounds D[i,j] = d(x[:,i], x[:,j])
+            @inbounds D[i,j] = f(X[:,i], X[:,j])
             if i != j; @inbounds D[j,i] = D[i,j]; end;
         end
     end
-    return max(D,0)
+    return D
 end
 
-# Calculates the stack [dm / dθᵢ] of mean matrix gradients
-function grad_stack(x::Matrix{Float64}, m::Mean)
-    n = num_params(m)
-    d, nobsv = size(x)
-    mat = Array(Float64, nobsv, n)
+@doc """
+# Description
+Constructs matrix by applying a function to each pair of columns of an input matrix.
+
+# Arguments
+* `X::Matrix{Float64}`: matrix of observations (each column is an observation)
+* `d::Function`: function specifying covariance between two points
+# Return:
+* `D::Matrix{Float64}`: Symmetric matrix D such that `D[i,j] = d(X[:,i], X[:,j])`
+
+""" ->
+function map_column_pairs{M<:MatF64}(f::Function, X::M)
+    dim, nobsv = size(X)
+    D = Array(Float64, nobsv, nobsv)
     for i in 1:nobsv
-        @inbounds mat[i,:] = grad_meanf(m, x[:,i])
+        for j in 1:i
+            @inbounds D[i,j] = f(X[:,i], X[:,j])
+            if i != j; @inbounds D[j,i] = D[i,j]; end;
+        end
     end
-    return mat
+    return D
 end
+
 
 # Taken from Distributions package
 φ(z::Real) = exp(-0.5*z*z)/√2π

@@ -4,57 +4,146 @@ import Base.show
 
 abstract Kernel
 
-# Returns matrix where D[i,j] = kernel(x1[i], x2[j])
-#
-# Arguments:
-#  x1 matrix of observations (each column is an observation)
-#  x2 matrix of observations (each column is an observation)
-#  k kernel object
-function crossKern(x1::Matrix{Float64}, x2::Matrix{Float64}, k::Kernel)
-    d(x,y) = kern(k, x, y)
-    return crossKern(x1, x2, d)
+"""
+Data to be used with a kernel object to
+calculate a covariance matrix, which is independent of kernel hyperparameters.
+
+# See also
+`EmptyData`
+"""
+abstract KernelData
+
+"""
+Default KernelData type which is empty.
+"""
+type EmptyData <: KernelData
 end
 
-# Returns matrix of distances D where D[i,j] = kernel(x1[i], x1[j])
-#
-# Arguments:
-#  x matrix of observations (each column is an observation)
-#  k kernel object
-function crossKern(x::Matrix{Float64}, k::Kernel)
-    d(x,y) = kern(k, x, y)
-    return crossKern(x, d)
+KernelData{M<:MatF64}(k::Kernel, X::M) = EmptyData()
+
+"""
+# Description
+Constructs covariance matrix from kernel and input observations
+
+# Arguments
+* `k::Kernel`: kernel for calculating covariance between pairs of points
+* `X₁::Matrix{Float64}`: matrix of observations (each column is an observation)
+* `X₂::Matrix{Float64}`: another matrix of observations
+
+# Return
+`Σ::Matrix{Float64}`: covariance matrix where `Σ[i,j]` is the covariance of the Gaussian process between points `X[:,i]` and `Y[:,j]`.
+"""
+function cov{M1<:MatF64,M2<:MatF64}(k::Kernel, X₁::M1, X₂::M2)
+    d(x1,x2) = cov(k, x1, x2)
+    return map_column_pairs(d, X₁, X₂)
+end
+function cov!{M1<:MatF64,M2<:MatF64}(cK::MatF64, k::Kernel, X₁::M1, X₂::M2)
+    d(x1,x2) = cov(k, x1, x2)
+    return map_column_pairs!(cK, d, X₁, X₂)
 end
 
+"""
+# Description
+Constructs covariance matrix from kernel and kernel data
+
+# Arguments
+* `k::Kernel`: kernel for calculating covariance between pairs of points
+* `X::Matrix{Float64}`: matrix of input observations (each column is an observation)    
+* `data::KernelData`: data, constructed from input observations, used for calculating covariance matrix
+
+# Return
+`Σ::Matrix{Float64}`: covariance matrix where `Σ[i,j]` is the covariance of the Gaussian process between points `X[:,i]` and `X[:,j]`.
+
+# See also
+Kernel, KernelData
+"""
+function cov{M<:MatF64}(k::Kernel, X::M, data::EmptyData)
+    d(x,y) = cov(k, x, y)
+    return map_column_pairs(d, X)
+end
+function cov!{M<:MatF64}(cK::MatF64, k::Kernel, X::M, data::EmptyData)
+    d(x,y) = cov(k, x, y)
+    return map_column_pairs!(cK, d, X)
+end
+
+cov{M<:MatF64}(k::Kernel, X::M) = cov(k, X, KernelData(k, X))
+cov!{M<:MatF64}(cK:: MatF64, k::Kernel, X::M) = cov!(cK, k, X, KernelData(k, X))
+#=function cov!(cK::Matrix{Float64}, k::Kernel, X::Matrix{Float64}, data::KernelData)=#
+#=    cK[:,:] = cov(k,X,data)=#
+#=end=#
+function addcov!{M<:MatF64}(cK::MatF64, k::Kernel, X::M)
+    cK[:,:] .+= cov(k, X, KernelData(k, X))
+    return cK
+end
+function addcov!{M<:MatF64}(cK::MatF64, k::Kernel, X::M, data::KernelData)
+    cK[:,:] .+= cov(k, X, data)
+    return cK
+end
+function multcov!{M<:MatF64}(cK::MatF64, k::Kernel, X::M)
+    cK[:,:] .*= cov(k, X, KernelData(k, X))
+    return cK
+end
+function multcov!{M<:MatF64}(cK::MatF64, k::Kernel, X::M, data::KernelData)
+    cK[:,:] .*= cov(k, X, data)
+    return cK
+end
+
+function grad_slice!{M1<:MatF64,M2<:MatF64}(dK::M1, k::Kernel, X::M2, data::KernelData, p::Int)
+    dim = size(X,1)
+    nobsv = size(X,2)
+    @inbounds for j in 1:nobsv
+        @simd for i in 1:j
+            dK[i,j] = dKij_dθp(k,X,data,i,j,p,dim)
+            dK[j,i] = dK[i,j]
+        end
+    end
+    return dK
+end
+function grad_slice!{M1<:MatF64,M2<:MatF64}(dK::M1, k::Kernel, X::M2, data::EmptyData, p::Int)
+    dim = size(X,1)
+    nobsv = size(X,2)
+    @inbounds for j in 1:nobsv
+        @simd for i in 1:j
+            dK[i,j] = dKij_dθp(k,X,i,j,p,dim)
+            dK[j,i] = dK[i,j]
+        end
+    end
+    return dK
+end
 # Calculates the stack [dk / dθᵢ] of kernel matrix gradients
-function grad_stack!(stack::AbstractArray, x::Matrix{Float64}, k::Kernel)
-    d, nobsv = size(x)
-    for j in 1:nobsv, i in 1:nobsv
-        @inbounds stack[i,j,:] = grad_kern(k, x[:,i], x[:,j])
+function grad_stack!{M<:MatF64}(stack::AbstractArray, k::Kernel, X::M, data::KernelData)
+    npars = num_params(k)
+    for p in 1:npars
+        grad_slice!(view(stack,:,:,p),k,X,data,p)
     end
     return stack
 end
-
-function grad_stack(x::Matrix{Float64}, k::Kernel)
+function grad_stack!{M<:MatF64}(stack::AbstractArray, k::Kernel, X::M)
+    grad_stack!(stack, k, X, KernelData(k, X))
+end
+grad_stack{M<:MatF64}(k::Kernel, X::M) = grad_stack(k, X, KernelData(k, X))
+function grad_stack{M<:MatF64}(k::Kernel, X::M, data::KernelData)
     n = num_params(k)
-    d, nobsv = size(x)
-    stack = Array(Float64, nobsv, nobsv, n)
-    grad_stack!(stack, x, k)
+    n_obsv = size(X, 2)
+    stack = Array(Float64, n_obsv, n_obsv, n)
+    grad_stack!(stack, k, X, data)
     return stack
 end
+
 
 ##############################
 # Parameter name definitions #
 ##############################
 
 # This generates names like [:ll_1, :ll_2, ...] for parameter vectors
-get_param_names(n::Int, prefix::Symbol) = [symbol(prefix, :_, i) for i in 1:n]
+get_param_names(n::Int, prefix::Symbol) = [Symbol(prefix, :_, i) for i in 1:n]
 get_param_names(v::Vector, prefix::Symbol) = get_param_names(length(v), prefix)
 
 # Fallback. Yields names like :Matl2Iso_param_1 => 0.5
 # Ideally this is never used, because the names are uninformative.
 get_param_names(obj::Union{Kernel, Mean}) =
     get_param_names(num_params(obj),
-                    symbol(typeof(obj).name.name, :_param_))
+                    Symbol(typeof(obj).name.name, :_param_))
 
 """ `composite_param_names(objects, prefix)`, where `objects` is a
 vector of kernels/means, calls `get_param_names` on each object and prefixes the
@@ -73,7 +162,7 @@ yields
 function composite_param_names(objects, prefix)
     p = Symbol[]
     for (i, obj) in enumerate(objects)
-        append!(p, [symbol(prefix, i, :_, sym) for sym in get_param_names(obj)])
+        append!(p, [Symbol(prefix, i, :_, sym) for sym in get_param_names(obj)])
     end
     p
 end
@@ -89,6 +178,8 @@ function show(io::IO, k::Kernel, depth::Int = 0)
     print(io, "\n")
 end
 
+num_params(k::Kernel)=throw(ArgumentError("Undefined number of parameters"))
+
 include("stationary.jl")
 
 include("lin.jl")               # Linear covariance function
@@ -102,3 +193,5 @@ include("noise.jl")             # White noise covariance function
 # Composite kernels
 include("sum_kernel.jl")        # Sum of kernels
 include("prod_kernel.jl")       # Product of kernels
+include("masked_kernel.jl")     # Masked kernels (apply to subset of X dims)
+include("fixed_kernel.jl")      # Fixed kernels (fix some hyperparameters)

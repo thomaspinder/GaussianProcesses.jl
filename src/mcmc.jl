@@ -13,7 +13,6 @@ function mcmc(gp::GPBase,
               nIters::Int64,
               burnin::Int64,
               ε::Float64,
-              L::Int64;
               init::Vector{Float64}=get_params(gp))
 
     ## Log-transformed Posterior and Gradient Vector
@@ -33,7 +32,7 @@ function mcmc(gp::GPBase,
    #     sim = Chains(nIters, length(get_params(gp)), start = (burnin + 1))
         out = Array{Float64}(nIters, length(get_params(gp)))
         #theta = NUTSVariate(init, logfgrad)
-        theta = HMCVariate(init, ε, L, logfgrad)
+        theta = MALAVariate(init, ε, logfgrad)
         for i in 1:nIters
             sample!(theta)
             out[i, :] = theta;

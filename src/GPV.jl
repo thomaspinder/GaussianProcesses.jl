@@ -1,4 +1,4 @@
-in GaussianProcess type
+# Main GaussianProcess type
 
 mutable struct GPV{X<:AbstractMatrix,Y<:AbstractVector{<:Real},M<:Mean,K<:Kernel,L<:Likelihood,
                     D<:KernelData} <: GPBase
